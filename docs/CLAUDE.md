@@ -31,6 +31,7 @@
 - Temperature scaling is fit on validation data only
 - The chat may only cite what’s in the classifier’s structured summary, and never gives a diagnosis or treatment advice
 - Model shouldn't give answer if doesn't pass threshold
+- The chat never describes an image as normal or healthy. A negative result means only that none of the seven findings was detected
 
 ## Layout 
 src/daignostic/   library code
