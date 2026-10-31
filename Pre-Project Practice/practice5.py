@@ -1,3 +1,4 @@
+#meta data practice using NIH Chest X-ray dataset Dat_Entry_2017.csv file
 from pathlib import Path
 
 import pandas as pd
