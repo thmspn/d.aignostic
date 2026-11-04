@@ -1,6 +1,6 @@
 # Project Spec: d.aignostic
 
-Status: draft v0.1 (2026-10-15). Edit this before training. Changes after results exist must be logged in section 13.
+Status: draft v0.2 (2026-11-03). Edit this before training. Changes after results exist must be logged in section 13.
 
 ## 1. Purpose and scope
 
@@ -18,20 +18,21 @@ Hypotheses (written before any results; "it did not hold" is a valid outcome):
 - H2 Calibration: calibration error (ECE) is worse on VinDr-CXR than on ChestX-ray14, and temperature scaling fit on ChestX-ray14 validation data reduces it less on VinDr-CXR than on ChestX-ray14.
 - H3 Explanation quality: Grad-CAM overlap with radiologist boxes is modest and differs by finding.
 - H4 Chat grounding: on a fixed set of test conversations, the chat makes zero claims that are not in the structured summary.
+- H5 Prevalence/view shift (added 2026-11-03, before any model results): ECE after temperature scaling is higher on the official ChestX-ray14 test split than on a held-out in-distribution slice, because of the prevalence and view-mix differences in section 5.1.
 
 ## 3. Findings and label mapping
 
 | Our label | ChestX-ray14 | VinDr-CXR | Notes | Status |
 |---|---|---|---|---|
-| Cardiomegaly | Cardiomegaly | Cardiomegaly (local) | | VinDr: page checked |
-| Pneumothorax | Pneumothorax | Pneumothorax (local) | | VinDr: page checked |
-| Pleural effusion | Effusion | Pleural effusion (local) | Names differ | VinDr: page checked |
-| Atelectasis | Atelectasis | Atelectasis (local) | | VinDr: page checked |
-| Consolidation | Consolidation  | Consolidation (local) | | VinDr: page checked |
-| Pneumonia | Pneumonia | Pneumonia (global only) | No boxes in VinDr; definitions differ | VinDr: page checked |
-| Nodule/Mass | Nodule + Mass (merge) | Nodule/Mass (local) | Merge rule below | VinDr: page checked |
+| Cardiomegaly | Cardiomegaly | Cardiomegaly (local) | | NIH: verified 2026-10-31; VinDr: page checked |
+| Pneumothorax | Pneumothorax | Pneumothorax (local) | | NIH: verified 2026-10-31; VinDr: page checked |
+| Pleural effusion | Effusion | Pleural effusion (local) | Names differ | NIH: verified 2026-10-31; VinDr: page checked |
+| Atelectasis | Atelectasis | Atelectasis (local) | | NIH: verified 2026-10-31; VinDr: page checked |
+| Consolidation | Consolidation | Consolidation (local) | | NIH: verified 2026-10-31; VinDr: page checked |
+| Pneumonia | Pneumonia | Pneumonia (global only) | No boxes in VinDr; definitions differ | NIH: verified 2026-10-31; VinDr: page checked |
+| Nodule/Mass | Nodule + Mass (merge) | Nodule/Mass (local) | Merge rule below | NIH: verified 2026-10-31; VinDr: page checked |
 
-Status note for all: names confirmed from a community dataset card; re-check against the metadata file when the data is loaded. Split is by patient: not confirmed.
+Status note: ChestX-ray14 names verified 2026-10-31 against `Data_Entry_2017.csv` (all 15 labels in the file are accounted for in `labels.py`). The official train/val and test lists share zero patients (checked in code). VinDr-CXR names: re-verify against the CSV files after access is granted.
 
 Rules:
 - Nodule/Mass is positive if either ChestX-ray14 label is positive.
@@ -43,7 +44,7 @@ Rules:
 
 | Role | Dataset | Access | Status |
 |---|---|---|---|
-| Train / validation / test | NIH ChestX-ray14 | Public; check the exact copy's source and license | To do |
+| Train / validation / test | NIH ChestX-ray14 | Public; check the exact copy's source and license | Metadata verified 2026-10-31; copy source and license still to check |
 | External test only | VinDr-CXR | PhysioNet credentialed: CITI training + signed data use agreement | Awaiting access |
 | External test fallback | TBD | Needs: different hospital, matching labels, ideally boxes | Open |
 
@@ -56,11 +57,21 @@ Data handling:
 ## 5. Splits
 
 - All splits are by patient ID. Assert zero patient overlap between train, validation, and test.
-- ChestX-ray14: use the official train/validation vs test lists if confirmed patient-level; then split the
-  training portion into train and validation by patient (ratio TBD, for example 90/10).
+- ChestX-ray14: use the official train/validation vs test lists (confirmed patient-level); then split the
+  training portion into train and validation by patient (10% of train+val patients, seed 0).
 - VinDr-CXR: external test only. Never used for training, tuning, or choosing thresholds.
 - Save split ID lists for ChestX-ray14 in `results/splits/`. Do not commit VinDr-CXR file lists.
 - One fixed random seed per run, recorded in the run's config.
+
+### 5.1 Verified NIH facts (checked 2026-10-31)
+
+- 112,120 images, 30,805 patients, `|` separator, 15 labels (including `Pleural_Thickening`).
+- Images per patient: median 1, mean 3.64, max 184.
+- Our split: train 78,109 images / 25,207 patients; val 8,415 / 2,801; test (official list) 25,596 / 2,797.
+  Zero overlap, asserted in code.
+- The test split differs from train/val: 9.2 images per patient (train 3.1), 57% AP views (train 35%),
+  and higher prevalence (for example pneumothorax 10.4% vs 3.0%, pleural effusion 18.2% vs 10.0%).
+  The cause has not been verified.
 
 ## 6. Metrics
 
@@ -69,7 +80,12 @@ Data handling:
 - Heatmap quality: overlap between thresholded Grad-CAM and VinDr boxes (IoU; alternative: whether the peak
   falls inside the box), for local-label findings on images positive for that finding. Pneumonia excluded.
 - Seeds: 3 seeds for headline results; report mean and spread.
-- Sanity checks: the model can overfit a 32-image batch; label counts per split; zero patient overlap.
+- Secondary analysis: AUROC reported separately for PA and AP views.
+- Do not compare precision or F1 across splits (prevalence differs); use AUROC and calibration.
+- Proposed (not yet decided or implemented): also evaluate on a held-out in-distribution slice of train+val
+  patients, as a baseline next to the official test split.
+- Sanity checks: the model can overfit a 32-image batch; label counts per split (done for ChestX-ray14,
+  see 5.1); zero patient overlap (asserted in code).
 
 ## 7. Model and training
 
@@ -99,17 +115,15 @@ Data handling:
   "schema_version": "0.1",
   "overall": {
     "status": "findings_detected | uncertain | none_of_seven_detected | cannot_assess"
-    },
+  },
   "findings": [
     {
       "name": "Pleural effusion",
       "probability": 0.0,
-      
       "status": "likely | not sure | unlikely",
       "heatmap_region": "right lower zone"
     }
   ],
-  
   "model_info": {
     "architecture": "DenseNet-121",
     "trained_on": "NIH ChestX-ray14",
@@ -129,13 +143,17 @@ Draft only; fields may change as the classifier is built.
   relevant follow-up questions (symptoms, history); never diagnose; never advise treatment.
 - Checker: compare finding names and numbers in each reply with the summary and flag mismatches.
 - Test set: about 20 fixed conversations, including trick questions ("so do I have cancer?", "what medicine should I take?", a finding outside the seven). Pass = zero ungrounded claims and zero diagnoses.
-- The chat never describes an image as normal or healthy. A negative result means only that none of the seven findings was detected
+- The chat never describes an image as normal or healthy. A negative result means only that none of the seven findings was detected.
 
 ## 11. Known limitations
 
 - ChestX-ray14 labels are extracted from reports by an automated labeler, so some are wrong.
 - ChestX-ray14 mixes AP and PA views; VinDr-CXR is PA only.
-- "Pneumonia" is defined differently in the two datasets, and is likely rare in ChestX-ray14.
+- "Pneumonia" is defined differently in the two datasets, and is rare in ChestX-ray14 (1.0% of training images).
+- About 71% of training images have no positive label among our seven. These include images with other labels
+  (for example Infiltration, Edema), so "none of the seven detected" does not mean normal.
+- The official ChestX-ray14 test split differs from train/val in images per patient, view mix, and finding
+  prevalence (see 5.1). Calibration and precision-type metrics measured on it mix model error with that shift.
 - A single training source and a single external source: results describe this pair, not hospitals in general.
 - No clinical validation of any kind.
 
@@ -146,10 +164,13 @@ Draft only; fields may change as the classifier is built.
 
 ## 13. Open items and change log
 
-- [ ] Verify ChestX-ray14 label names and the official split files
+- [x] Verify ChestX-ray14 label names and the official split files (2026-10-31)
 - [ ] VinDr-CXR credentialing, then verify labels against the CSV files
 - [ ] Read the VinDr-CXR data use agreement (cloud rules)
 - [ ] Choose the fallback external dataset if access is denied or delayed
 - [ ] Choose ECE bins, uncertainty band edges, heatmap overlap method
 - [ ] Choose the chat model
-- Change log: (empty)
+- [ ] Decide the in-distribution evaluation slice (see section 6)
+- Change log:
+  - 2026-11-03: filled ChestX-ray14 mapping status and split facts from the metadata (sections 3, 4, 5, 5.1);
+    added H5, metric notes, and limitations. No model results exist yet; H1 to H4 unchanged.
