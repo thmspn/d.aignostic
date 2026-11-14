@@ -19,9 +19,9 @@ def index_images(root):
     return {p.name: p for p in Path(root).rglob("*.png")}
 
 
-def get_transform():
+def get_transform(image_size=IMAGE_SIZE):
     return transforms.Compose([
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
         transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
     ])
